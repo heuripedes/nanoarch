@@ -36,9 +36,8 @@ static GLfloat g_vertex_data[] = {
 };
 
 static struct {
-	GLuint id;
+	GLuint tex_id;
 	GLuint pitch;
-	GLint win_w, win_h;
 	GLint tex_w, tex_h;
 	GLuint clip_w, clip_h;
 
@@ -291,24 +290,24 @@ static void video_configure(const struct retro_game_geometry *geom) {
 	if (!g_win)
 		create_window(nwidth, nheight);
 
-	if (g_video.id)
-		glDeleteTextures(1, &g_video.id);
+	if (g_video.tex_id)
+		glDeleteTextures(1, &g_video.tex_id);
 
-	g_video.id = 0;
+	g_video.tex_id = 0;
 
 	if (!g_video.pixfmt)
 		g_video.pixfmt = GL_UNSIGNED_SHORT_5_5_5_1;
 
 	glfwSetWindowSize(g_win, nwidth, nheight);
 
-	glGenTextures(1, &g_video.id);
+	glGenTextures(1, &g_video.tex_id);
 
-	if (!g_video.id)
+	if (!g_video.tex_id)
 		die("Failed to create the video texture");
 
 	g_video.pitch = geom->base_width * g_video.bpp;
 
-	glBindTexture(GL_TEXTURE_2D, g_video.id);
+	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
 
 //	glPixelStorei(GL_UNPACK_ALIGNMENT, s_video.pixfmt == GL_UNSIGNED_INT_8_8_8_8_REV ? 4 : 2);
 //	glPixelStorei(GL_UNPACK_ROW_LENGTH, s_video.pitch / s_video.bpp);
@@ -321,9 +320,6 @@ static void video_configure(const struct retro_game_geometry *geom) {
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-	g_video.win_w  = nwidth;
-	g_video.win_h  = nheight;
-
 	g_video.tex_w = geom->max_width;
 	g_video.tex_h = geom->max_height;
 	g_video.clip_w = geom->base_width;
@@ -334,7 +330,7 @@ static void video_configure(const struct retro_game_geometry *geom) {
 
 
 static bool video_set_pixel_format(unsigned format) {
-	if (g_video.id)
+	if (g_video.tex_id)
 		die("Tried to change pixel format after initialization.");
 
 	switch (format) {
@@ -369,7 +365,7 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
 		refresh_vertex_data();
 	}
 
-	glBindTexture(GL_TEXTURE_2D, g_video.id);
+	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
 
 	if (pitch != g_video.pitch) {
 		g_video.pitch = pitch;
@@ -389,7 +385,7 @@ static void video_render() {
 	glUseProgram(g_shader_program);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, g_video.id);
+	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
 
 	glBindVertexArray(g_vao);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -402,14 +398,14 @@ static void video_render() {
 
 
 static void video_deinit() {
-	if (g_video.id)
-		glDeleteTextures(1, &g_video.id);
+	if (g_video.tex_id)
+		glDeleteTextures(1, &g_video.tex_id);
 
 	glDeleteVertexArrays(1, &g_vao);
 	glDeleteBuffers(1, &g_vbo);
 	glDeleteProgram(g_shader_program);
 
-	g_video.id = 0;
+	g_video.tex_id = 0;
 }
 
 
