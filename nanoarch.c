@@ -98,7 +98,7 @@ struct keymap g_binds[] = {
 	{ 0, 0 }
 };
 
-static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1];
+static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1] = { 0 };
 
 static const char *g_vshader_src =
 	"#version 120\n"
