@@ -1,6 +1,6 @@
 target   := nanoarch
 sources  := nanoarch.c
-CFLAGS   := -std=c99 -Wall -O2 -g
+CFLAGS   := -Wall -O2 -g
 LFLAGS   := -static-libgcc
 LIBS     := -ldl
 packages := gl glew glfw3 alsa

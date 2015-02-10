@@ -7,8 +7,8 @@ no UI or configuration support.
 
 ## Building
 
-Other than a working C99 compiler (nanoarch.c is compilable as C++ too), you'll
-need alsa and glfw development files installed.
+Other than `make`, `pkg-config` and a working C99 or C++ compiler, you'll need
+`alsa` and `glfw` development files installed.
 
 ## Running
 
