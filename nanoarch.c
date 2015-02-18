@@ -44,18 +44,12 @@ static struct {
 	GLuint pixfmt;
 	GLuint pixtype;
 	GLuint bpp;
-
 } g_video  = {0};
 
 
 static struct {
 	void *handle;
 	bool initialized;
-	bool game_loaded;
-
-	struct retro_system_info sys_info;
-	struct retro_system_av_info av_info;
-	struct retro_game_info game_info;
 
 	void (*retro_init)(void);
 	void (*retro_deinit)(void);
@@ -77,6 +71,7 @@ static struct {
 //	void *retro_get_memory_data(unsigned id);
 //	size_t retro_get_memory_size(unsigned id);
 } g_retro;
+
 
 struct keymap {
 	unsigned k;
@@ -442,23 +437,18 @@ static size_t audio_write(const void *buf, unsigned frames) {
 
 
 static void core_log(enum retro_log_level level, const char *fmt, ...) {
-	char buffer[4096];
-
+	char buffer[4096] = {0};
+	static const char * levelstr[] = { "dbg", "inf", "wrn", "err" };
 	va_list va;
+
 	va_start(va, fmt);
 	vsnprintf(buffer, sizeof(buffer), fmt, va);
 	va_end(va);
-
-	static const char * levelstr[] = { "dbg", "inf", "wrn", "err" };
 
 	if (level == 0)
 		return;
 
 	fprintf(stderr, "[%s] %s", levelstr[level], buffer);
-
-	if (buffer[strlen(buffer)-1] != '\n')
-		fputc('\n', stderr);
-
 	fflush(stderr);
 
 	if (level == RETRO_LOG_ERROR)
@@ -475,11 +465,10 @@ static bool core_environment(unsigned cmd, void *data) {
 		cb->log = core_log;
 		break;
 	}
-	case RETRO_ENVIRONMENT_GET_CAN_DUPE: {
+	case RETRO_ENVIRONMENT_GET_CAN_DUPE:
 		bval = (bool*)data;
 		*bval = true;
 		break;
-	}
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
 		const enum retro_pixel_format *fmt = (enum retro_pixel_format *)data;
 
@@ -505,9 +494,8 @@ static void core_video_refresh(const void *data, unsigned width, unsigned height
 
 static void core_input_poll(void) {
 	int i;
-	for (i = 0; g_binds[i].k || g_binds[i].rk; ++i) {
+	for (i = 0; g_binds[i].k || g_binds[i].rk; ++i)
 		g_joy[g_binds[i].rk] = (glfwGetKey(g_win, g_binds[i].k) == GLFW_PRESS);
-	}
 }
 
 
@@ -531,6 +519,13 @@ static size_t core_audio_sample_batch(const int16_t *data, size_t frames) {
 
 
 static void core_load(const char *sofile) {
+	void (*set_environment)(retro_environment_t) = NULL;
+	void (*set_video_refresh)(retro_video_refresh_t) = NULL;
+	void (*set_input_poll)(retro_input_poll_t) = NULL;
+	void (*set_input_state)(retro_input_state_t) = NULL;
+	void (*set_audio_sample)(retro_audio_sample_t) = NULL;
+	void (*set_audio_sample_batch)(retro_audio_sample_batch_t) = NULL;
+
 	memset(&g_retro, 0, sizeof(g_retro));
 	g_retro.handle = dlopen(sofile, RTLD_LAZY);
 
@@ -550,77 +545,61 @@ static void core_load(const char *sofile) {
 	load_retro_sym(retro_load_game);
 	load_retro_sym(retro_unload_game);
 
-	void (*set_environment)(retro_environment_t);
 	load_sym(set_environment, retro_set_environment);
-	set_environment(core_environment);
-
-	struct retro_system_info *info = &g_retro.sys_info;
-	g_retro.retro_get_system_info(info);
-
-	void (*set_video_refresh)(retro_video_refresh_t);
 	load_sym(set_video_refresh, retro_set_video_refresh);
-	set_video_refresh(core_video_refresh);
-
-	void (*set_input_poll)(retro_input_poll_t);
 	load_sym(set_input_poll, retro_set_input_poll);
-	set_input_poll(core_input_poll);
-
-	void (*set_input_state)(retro_input_state_t);
 	load_sym(set_input_state, retro_set_input_state);
-	set_input_state(core_input_state);
-
-	void (*set_audio_sample)(retro_audio_sample_t);
 	load_sym(set_audio_sample, retro_set_audio_sample);
-	set_audio_sample(core_audio_sample);
-
-	void (*set_audio_sample_batch)(retro_audio_sample_batch_t);
 	load_sym(set_audio_sample_batch, retro_set_audio_sample_batch);
+
+	set_environment(core_environment);
+	set_video_refresh(core_video_refresh);
+	set_input_poll(core_input_poll);
+	set_input_state(core_input_state);
+	set_audio_sample(core_audio_sample);
 	set_audio_sample_batch(core_audio_sample_batch);
 
 	g_retro.retro_init();
 	g_retro.initialized = true;
 
-	char buf[100];
-	snprintf(buf, sizeof(buf), "%s %s", info->library_name, info->library_version);
-	buf[sizeof(buf)-1] = 0;
-
-	printf("Libretro v%u core loaded: %s\n", g_retro.retro_api_version(), buf);
+	puts("Core loaded");
 }
 
 
 static void core_load_game(const char *filename) {
-	struct retro_game_info *game = &g_retro.game_info;
-	game->path  = filename;
-	game->meta = "";
-	game->data = 0;
-
+	struct retro_system_av_info av = {0};
+	struct retro_system_info system = {0};
+	struct retro_game_info info = { filename, 0 };
 	FILE *file = fopen(filename, "rb");
 
 	if (!file)
-		die("Failed to open content '%s': %s", filename, strerror(errno));
+		goto libc_error;
 
 	fseek(file, 0, SEEK_END);
-	game->size = ftell(file);
+	info.size = ftell(file);
 	rewind(file);
 
-	if (!g_retro.sys_info.need_fullpath) {
-		void *data = malloc(game->size);
+	g_retro.retro_get_system_info(&system);
 
-		if (!fread(data, game->size, 1, file))
-			die("Failed to read content '%s': %s", filename, strerror(errno));
+	if (!system.need_fullpath) {
+		info.data = malloc(info.size);
 
-		game->data = data;
+		if (!info.data || !fread((void*)info.data, info.size, 1, file))
+			goto libc_error;
 	}
 
-	if (!g_retro.retro_load_game(game))
+	if (!g_retro.retro_load_game(&info))
 		die("The core failed to load the content.");
 
-	struct retro_system_av_info *av = &g_retro.av_info;
-	g_retro.retro_get_system_av_info(av);
+	g_retro.retro_get_system_av_info(&av);
 
-	video_configure(&av->geometry);
+	video_configure(&av.geometry);
+	audio_init(av.timing.sample_rate);
 
-	audio_init(av->timing.sample_rate);
+	return;
+
+libc_error:
+	die("Failed to load content '%s': %s", filename, strerror(errno));
 }
 
 
@@ -632,15 +611,10 @@ static void core_unload() {
 		dlclose(g_retro.handle);
 }
 
-static void error_cb(int err, const char *message) {
-	die("GLFW error #%i: %s", err, message);
-}
 
 int main(int argc, char *argv[]) {
 	if (argc < 3)
 		die("usage: %s <core> <game>", argv[0]);
-
-	glfwSetErrorCallback(error_cb);
 
 	if (!glfwInit())
 		die("Failed to initialize glfw");
