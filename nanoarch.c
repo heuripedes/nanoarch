@@ -15,24 +15,18 @@
 static GLFWwindow *g_win = NULL;
 static snd_pcm_t *g_pcm = NULL;
 static float g_scale = 3;
-static GLuint g_vao = 0;
-static GLuint g_vbo = 0;
-static GLuint g_shader_program = 0;
-static GLint g_pos_attrib = 0;
-static GLint g_coord_attrib = 0;
-static GLint g_tex_uniform = 0;
 
-static GLfloat g_vertex_data[] = {
-	// vertex
-	-1, -1, // left-bottom
-	-1,  1, // left-top
-	 1, -1, // right-bottom
-	 1,  1, // right-top
-	// texture
-	 0,  1,
-	 0,  0,
-	 1,  1,
-	 1,  0,
+static GLfloat g_vertex[] = {
+	-1.0f, -1.0f, // left-bottom
+	-1.0f,  1.0f, // left-top
+	 1.0f, -1.0f, // right-bottom
+	 1.0f,  1.0f, // right-top
+};
+static GLfloat g_texcoords[] ={
+	0.0f,  1.0f,
+	0.0f,  0.0f,
+	1.0f,  1.0f,
+	1.0f,  0.0f,
 };
 
 static struct {
@@ -95,25 +89,6 @@ struct keymap g_binds[] = {
 
 static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1] = { 0 };
 
-static const char *g_vshader_src =
-	"#version 120\n"
-	"attribute vec2 in_pos;\n"
-	"attribute vec2 in_coord;\n"
-	"varying vec2 var_coord;\n"
-	"void main() {\n"
-		"var_coord = in_coord;\n"
-		"gl_Position = vec4(in_pos, 0.0, 1.0);// * ftransform();\n"
-	"}";
-
-static const char *g_fshader_src =
-	"#version 120\n"
-	"varying vec2 var_coord;\n"
-	"uniform sampler2D uni_tex;\n"
-	"void main() {\n"
-		"gl_FragColor = texture2D(uni_tex, var_coord);\n"
-	"}";
-
-
 #define load_sym(V, S) do {\
 	if (!((*(void**)&V) = dlsym(g_retro.handle, #S))) \
 		die("Failed to load symbol '" #S "'': %s", dlerror()); \
@@ -136,87 +111,15 @@ static void die(const char *fmt, ...) {
 	exit(EXIT_FAILURE);
 }
 
-
-static GLuint compile_shader(unsigned type, unsigned count, const char **strings) {
-	GLuint shader = glCreateShader(type);
-	glShaderSource(shader, count, strings, NULL);
-	glCompileShader(shader);
-
-	GLint status;
-	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-
-	if (status == GL_FALSE) {
-		char buffer[4096];
-		glGetShaderInfoLog(shader, sizeof(buffer), NULL, buffer);
-		die("Failed to compile %s shader: %s", type == GL_VERTEX_SHADER ? "vertex" : "fragment", buffer);
-	}
-
-	return shader;
-}
-
-
-static GLuint setup_shaders() {
-	GLuint vshader = compile_shader(GL_VERTEX_SHADER, 1, &g_vshader_src);
-	GLuint fshader = compile_shader(GL_FRAGMENT_SHADER, 1, &g_fshader_src);
-	GLuint program = glCreateProgram();
-	glAttachShader(program, vshader);
-	glAttachShader(program, fshader);
-	glLinkProgram(program);
-
-	glDeleteShader(vshader);
-	glDeleteShader(fshader);
-
-	glValidateProgram(program);
-
-	GLint status;
-	glGetProgramiv(program, GL_LINK_STATUS, &status);
-
-	if(status == GL_FALSE) {
-		char buffer[4096];
-		glGetProgramInfoLog(program, sizeof(buffer), NULL, buffer);
-		die("Failed to link shader program: %s", buffer);
-	}
-
-	g_pos_attrib = glGetAttribLocation(program, "in_pos");
-	g_coord_attrib = glGetAttribLocation(program, "in_coord");
-	g_tex_uniform = glGetUniformLocation(program, "uni_tex");
-
-	assert(g_pos_attrib != -1);
-	assert(g_coord_attrib != -1);
-	assert(g_tex_uniform != -1);
-
-	return program;
-}
-
-
 static void refresh_vertex_data() {
 	assert(g_video.tex_w);
 	assert(g_video.tex_h);
 	assert(g_video.clip_w);
 	assert(g_video.clip_h);
 
-	GLfloat *coords = &g_vertex_data[8];
+	GLfloat *coords = g_texcoords;
 	coords[1] = coords[5] = (float)g_video.clip_h / g_video.tex_h;
 	coords[4] = coords[6] = (float)g_video.clip_w / g_video.tex_w;
-
-	if (!g_vao)
-		glGenVertexArrays(1, &g_vao);
-
-	glBindVertexArray(g_vao);
-
-	if (!g_vbo)
-		glGenBuffers(1, &g_vbo);
-
-	glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_data), g_vertex_data, GL_STREAM_DRAW);
-
-	glEnableVertexAttribArray(g_pos_attrib);
-	glVertexAttribPointer(g_pos_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
-	glEnableVertexAttribArray(g_coord_attrib);
-	glVertexAttribPointer(g_coord_attrib, 2, GL_FLOAT, GL_FALSE, 0, (void*)(8 * sizeof(GLfloat)));
-
-	glBindVertexArray(0);
 }
 
 
@@ -247,14 +150,9 @@ static void create_window(int width, int height) {
 
 	printf("GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
-	g_shader_program = setup_shaders();
-
-	glUseProgram(g_shader_program);
-	glUniform1i(g_tex_uniform, 0);
+	glEnable(GL_TEXTURE_2D);
 
 //	refresh_vertex_data();
-
-	glUseProgram(0);
 
 	resize_cb(g_win, width, height);
 }
@@ -371,34 +269,25 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
 						g_video.pixtype, g_video.pixfmt, data);
 	}
-
-	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 
 static void video_render() {
-	glUseProgram(g_shader_program);
-
-	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
 
-	glBindVertexArray(g_vao);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+	glVertexPointer(2, GL_FLOAT, 0, g_vertex);
+	glTexCoordPointer(2, GL_FLOAT, 0, g_texcoords);
+
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	glBindVertexArray(0);
-
-	glBindTexture(GL_TEXTURE_2D, 0);
-
-	glUseProgram(0);
 }
 
 
 static void video_deinit() {
 	if (g_video.tex_id)
 		glDeleteTextures(1, &g_video.tex_id);
-
-	glDeleteVertexArrays(1, &g_vao);
-	glDeleteBuffers(1, &g_vbo);
-	glDeleteProgram(g_shader_program);
 
 	g_video.tex_id = 0;
 }
@@ -627,7 +516,6 @@ int main(int argc, char *argv[]) {
 
 		g_retro.retro_run();
 
-		glClearColor(0, 0, 0, 1);
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		video_render();
