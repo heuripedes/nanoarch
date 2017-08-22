@@ -385,6 +385,11 @@ static void core_input_poll(void) {
 	int i;
 	for (i = 0; g_binds[i].k || g_binds[i].rk; ++i)
 		g_joy[g_binds[i].rk] = (glfwGetKey(g_win, g_binds[i].k) == GLFW_PRESS);
+
+	// Quit nanoarch when pressing the Escape key.
+	if (glfwGetKey(g_win, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+		glfwSetWindowShouldClose(g_win, true);
+	}
 }
 
 
