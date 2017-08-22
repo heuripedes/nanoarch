@@ -128,15 +128,32 @@ static void resize_cb(GLFWwindow *win, int w, int h) {
 }
 
 
-static void create_window(int width, int height) {
+static void create_window(int width, int height, bool fullscreen) {
+	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+	glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+	glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+	glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+	glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+	glfwWindowHint(GLFW_RESIZABLE, true);
 
-	g_win = glfwCreateWindow(width, height, "nanoarch", NULL, NULL);
+	// Check to see if we are to go fullscreen.
+	if (fullscreen) {
+		g_win = glfwCreateWindow(width, height, "nanoarch", monitor, NULL);
+	}
+	else {
+		g_win = glfwCreateWindow(width, height, "nanoarch", NULL, NULL);
+	}
 
 	if (!g_win)
 		die("Failed to create window.");
+
+	// Force the given aspect ratio, if GLFW >3.2.
+	#if GLFW_VERSION_MAJOR >= 3 && GLFW_VERSION_MINOR >= 2
+	glfwSetWindowAspectRatio(g_win, width, height);
+	#endif
 
 	glfwSetFramebufferSizeCallback(g_win, resize_cb);
 
@@ -181,7 +198,7 @@ static void video_configure(const struct retro_game_geometry *geom) {
 	nheight *= g_scale;
 
 	if (!g_win)
-		create_window(nwidth, nheight);
+		create_window(nwidth, nheight, false);
 
 	if (g_video.tex_id)
 		glDeleteTextures(1, &g_video.tex_id);
