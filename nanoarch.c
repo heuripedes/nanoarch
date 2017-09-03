@@ -366,6 +366,11 @@ static bool core_environment(unsigned cmd, void *data) {
 
 		return video_set_pixel_format(*fmt);
 	}
+    case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+    case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+        *(const char **)data = ".";
+        return true;
+
 	default:
 		core_log(RETRO_LOG_DEBUG, "Unhandled env #%u", cmd);
 		return false;
