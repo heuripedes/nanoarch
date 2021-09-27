@@ -194,6 +194,8 @@ static void video_configure(const struct retro_game_geometry *geom) {
 		g_video.pixfmt = GL_UNSIGNED_SHORT_5_5_5_1;
 
 	glfwSetWindowSize(g_win, nwidth, nheight);
+	glfwSetWindowAttrib(g_win, GLFW_RESIZABLE, GLFW_TRUE);
+	glfwSetWindowAspectRatio(g_win, nwidth, nheight);
 
 	glGenTextures(1, &g_video.tex_id);
 
@@ -518,10 +520,17 @@ static void core_unload() {
 
 int main(int argc, char *argv[]) {
 	if (argc < 3)
-		die("usage: %s <core> <game>", argv[0]);
+		die("usage: %s <core> <game> [-s default-scale]", argv[0]);
 
 	if (!glfwInit())
 		die("Failed to initialize glfw");
+
+	char **opts = &argv[3];
+	while (*opts) {
+		if (!strcmp(*opts, "-s"))
+			g_scale = atoi(*(++opts));
+		opts++;
+	}
 
 	core_load(argv[1]);
 	core_load_game(argv[2]);
