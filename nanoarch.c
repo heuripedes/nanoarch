@@ -53,9 +53,9 @@ static struct {
 	void (*retro_set_controller_port_device)(unsigned port, unsigned device);
 	void (*retro_reset)(void);
 	void (*retro_run)(void);
-//	size_t retro_serialize_size(void);
-//	bool retro_serialize(void *data, size_t size);
-//	bool retro_unserialize(const void *data, size_t size);
+	size_t (*retro_serialize_size)(void);
+	bool (*retro_serialize)(void *data, size_t size);
+	bool (*retro_unserialize)(const void *data, size_t size);
 //	void retro_cheat_reset(void);
 //	void retro_cheat_set(unsigned index, bool enabled, const char *code);
 	bool (*retro_load_game)(const struct retro_game_info *game);
@@ -450,6 +450,9 @@ static void core_load(const char *sofile) {
 	load_retro_sym(retro_run);
 	load_retro_sym(retro_load_game);
 	load_retro_sym(retro_unload_game);
+	load_retro_sym(retro_serialize_size);
+	load_retro_sym(retro_serialize);
+	load_retro_sym(retro_unserialize);
 
 	load_sym(set_environment, retro_set_environment);
 	load_sym(set_video_refresh, retro_set_video_refresh);
@@ -520,20 +523,37 @@ static void core_unload() {
 
 int main(int argc, char *argv[]) {
 	if (argc < 3)
-		die("usage: %s <core> <game> [-s default-scale]", argv[0]);
+		die("usage: %s <core> <game> [-s default-scale] [-l load-savestate]", argv[0]);
 
 	if (!glfwInit())
 		die("Failed to initialize glfw");
 
 	char **opts = &argv[3];
+	char *savestate = NULL;
 	while (*opts) {
 		if (!strcmp(*opts, "-s"))
 			g_scale = atoi(*(++opts));
+		else if (!strcmp(*opts, "-l"))
+			savestate = *(++opts);
 		opts++;
 	}
 
 	core_load(argv[1]);
 	core_load_game(argv[2]);
+
+	if (savestate) {
+		FILE *fd = fopen(savestate, "rb");
+		if (!fd)
+			die("Failed to find savestate file '%s'", savestate);
+
+		void *saveblob = malloc(g_retro.retro_serialize_size());
+		size_t rdb = fread(saveblob, 1, g_retro.retro_serialize_size(), fd);
+
+		if (!g_retro.retro_unserialize(saveblob, rdb))
+			die("Failed to load savestate, core returned error");
+		fclose(fd);
+		free(saveblob);
+	}
 
 	while (!glfwWindowShouldClose(g_win)) {
 		glfwPollEvents();
