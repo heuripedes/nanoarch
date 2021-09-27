@@ -77,6 +77,8 @@ struct keymap g_binds[] = {
 	{ GLFW_KEY_Z, RETRO_DEVICE_ID_JOYPAD_B },
 	{ GLFW_KEY_A, RETRO_DEVICE_ID_JOYPAD_Y },
 	{ GLFW_KEY_S, RETRO_DEVICE_ID_JOYPAD_X },
+	{ GLFW_KEY_Q, RETRO_DEVICE_ID_JOYPAD_L },
+	{ GLFW_KEY_W, RETRO_DEVICE_ID_JOYPAD_R },
 	{ GLFW_KEY_UP, RETRO_DEVICE_ID_JOYPAD_UP },
 	{ GLFW_KEY_DOWN, RETRO_DEVICE_ID_JOYPAD_DOWN },
 	{ GLFW_KEY_LEFT, RETRO_DEVICE_ID_JOYPAD_LEFT },
@@ -526,6 +528,11 @@ int main(int argc, char *argv[]) {
 
 	while (!glfwWindowShouldClose(g_win)) {
 		glfwPollEvents();
+
+		// Reset core on R key.
+		if (glfwGetKey(g_win, GLFW_KEY_R) == GLFW_PRESS) {
+			g_retro.retro_reset();
+		}
 
 		g_retro.retro_run();
 
