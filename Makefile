@@ -1,7 +1,7 @@
 target   := nanoarch
 sources  := nanoarch.c
 CFLAGS   := -Wall -O2 -g
-LFLAGS   := -static-libgcc
+LDFLAGS  := -static-libgcc
 LIBS     := -ldl
 packages := gl glew glfw3 alsa
 
@@ -9,7 +9,7 @@ packages := gl glew glfw3 alsa
 objects := $(addprefix build/,$(sources:.c=.o))
 ifneq ($(packages),)
     LIBS    += $(shell pkg-config --libs-only-l $(packages))
-    LFLAGS  += $(shell pkg-config --libs-only-L --libs-only-other $(packages))
+    LDFLAGS += $(shell pkg-config --libs-only-L --libs-only-other $(packages))
     CFLAGS  += $(shell pkg-config --cflags $(packages))
 endif
 
@@ -21,7 +21,7 @@ clean:
 	-rm -f $(target)
 
 $(target): Makefile $(objects)
-	$(CC) $(LFLAGS) -o $@ $(objects) $(LIBS)
+	$(CC) $(LDFLAGS) -o $@ $(objects) $(LIBS)
 
 build/%.o: %.c Makefile
 	-mkdir -p $(dir $@)
