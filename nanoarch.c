@@ -312,6 +312,9 @@ static void audio_deinit() {
 
 
 static size_t audio_write(const void *buf, unsigned frames) {
+	if (!g_pcm)
+		return 0;
+
 	int written = snd_pcm_writei(g_pcm, buf, frames);
 
 	if (written < 0) {
