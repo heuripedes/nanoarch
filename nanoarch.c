@@ -523,28 +523,31 @@ static void core_unload() {
 
 int main(int argc, char *argv[]) {
 	if (argc < 3)
-		die("usage: %s <core> <game> [-s default-scale] [-l load-savestate]", argv[0]);
+		die("usage: %s <core> <game> [-s default-scale] [-l load-savestate] [-d save-savestate]", argv[0]);
 
 	if (!glfwInit())
 		die("Failed to initialize glfw");
 
 	char **opts = &argv[3];
-	char *savestate = NULL;
+	char *savestatel = NULL;
+	char *savestated = NULL;
 	while (*opts) {
 		if (!strcmp(*opts, "-s"))
 			g_scale = atoi(*(++opts));
 		else if (!strcmp(*opts, "-l"))
-			savestate = *(++opts);
+			savestatel = *(++opts);
+		else if (!strcmp(*opts, "-d"))
+			savestated = *(++opts);
 		opts++;
 	}
 
 	core_load(argv[1]);
 	core_load_game(argv[2]);
 
-	if (savestate) {
-		FILE *fd = fopen(savestate, "rb");
+	if (savestatel) {
+		FILE *fd = fopen(savestatel, "rb");
 		if (!fd)
-			die("Failed to find savestate file '%s'", savestate);
+			die("Failed to find savestate file '%s'", savestatel);
 
 		void *saveblob = malloc(g_retro.retro_serialize_size());
 		size_t rdb = fread(saveblob, 1, g_retro.retro_serialize_size(), fd);
@@ -570,6 +573,23 @@ int main(int argc, char *argv[]) {
 		video_render();
 
 		glfwSwapBuffers(g_win);
+	}
+
+	if (savestated) {
+		FILE *fd = fopen(savestated, "wb");
+		if (!fd) {
+			fprintf(stderr, "Could not write savestate dump to '%s'", savestated);
+		} else {
+			size_t savsz = g_retro.retro_serialize_size();
+			void *saveblob = malloc(savsz);
+			if (!g_retro.retro_serialize(saveblob, savsz)) {
+				fprintf(stderr, "Could not generate savestate, core returned error");
+			} else {
+				fwrite(saveblob, 1, savsz, fd);
+			}
+			free(saveblob);
+			fclose(fd);
+		}
 	}
 
 	core_unload();
