@@ -14,3 +14,7 @@ Other than `make`, `pkg-config` and a working C99 or C++ compiler, you'll need
 
     ./nanoarch <core> <uncompressed content>
 
+## Testing
+
+    make rom core CORE_NAME=snes9x
+    ./nanoarch ./snes9x_libretro.so rom-test.sfc
