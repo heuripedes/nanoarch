@@ -53,9 +53,9 @@ static struct {
 	void (*retro_set_controller_port_device)(unsigned port, unsigned device);
 	void (*retro_reset)(void);
 	void (*retro_run)(void);
-//	size_t retro_serialize_size(void);
-//	bool retro_serialize(void *data, size_t size);
-//	bool retro_unserialize(const void *data, size_t size);
+	size_t (*retro_serialize_size)(void);
+	bool (*retro_serialize)(void *data, size_t size);
+	bool (*retro_unserialize)(const void *data, size_t size);
 //	void retro_cheat_reset(void);
 //	void retro_cheat_set(unsigned index, bool enabled, const char *code);
 	bool (*retro_load_game)(const struct retro_game_info *game);
@@ -77,6 +77,8 @@ struct keymap g_binds[] = {
 	{ GLFW_KEY_Z, RETRO_DEVICE_ID_JOYPAD_B },
 	{ GLFW_KEY_A, RETRO_DEVICE_ID_JOYPAD_Y },
 	{ GLFW_KEY_S, RETRO_DEVICE_ID_JOYPAD_X },
+	{ GLFW_KEY_Q, RETRO_DEVICE_ID_JOYPAD_L },
+	{ GLFW_KEY_W, RETRO_DEVICE_ID_JOYPAD_R },
 	{ GLFW_KEY_UP, RETRO_DEVICE_ID_JOYPAD_UP },
 	{ GLFW_KEY_DOWN, RETRO_DEVICE_ID_JOYPAD_DOWN },
 	{ GLFW_KEY_LEFT, RETRO_DEVICE_ID_JOYPAD_LEFT },
@@ -192,6 +194,8 @@ static void video_configure(const struct retro_game_geometry *geom) {
 		g_video.pixfmt = GL_UNSIGNED_SHORT_5_5_5_1;
 
 	glfwSetWindowSize(g_win, nwidth, nheight);
+	glfwSetWindowAttrib(g_win, GLFW_RESIZABLE, GLFW_TRUE);
+	glfwSetWindowAspectRatio(g_win, nwidth, nheight);
 
 	glGenTextures(1, &g_video.tex_id);
 
@@ -312,6 +316,9 @@ static void audio_deinit() {
 
 
 static size_t audio_write(const void *buf, unsigned frames) {
+	if (!g_pcm)
+		return 0;
+
 	int written = snd_pcm_writei(g_pcm, buf, frames);
 
 	if (written < 0) {
@@ -366,10 +373,10 @@ static bool core_environment(unsigned cmd, void *data) {
 
 		return video_set_pixel_format(*fmt);
 	}
-    case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-    case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
-        *(const char **)data = ".";
-        return true;
+	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+		*(const char **)data = ".";
+		return true;
 
 	default:
 		core_log(RETRO_LOG_DEBUG, "Unhandled env #%u", cmd);
@@ -443,6 +450,9 @@ static void core_load(const char *sofile) {
 	load_retro_sym(retro_run);
 	load_retro_sym(retro_load_game);
 	load_retro_sym(retro_unload_game);
+	load_retro_sym(retro_serialize_size);
+	load_retro_sym(retro_serialize);
+	load_retro_sym(retro_unserialize);
 
 	load_sym(set_environment, retro_set_environment);
 	load_sym(set_video_refresh, retro_set_video_refresh);
@@ -513,16 +523,48 @@ static void core_unload() {
 
 int main(int argc, char *argv[]) {
 	if (argc < 3)
-		die("usage: %s <core> <game>", argv[0]);
+		die("usage: %s <core> <game> [-s default-scale] [-l load-savestate] [-d save-savestate]", argv[0]);
 
 	if (!glfwInit())
 		die("Failed to initialize glfw");
 
+	char **opts = &argv[3];
+	char *savestatel = NULL;
+	char *savestated = NULL;
+	while (*opts) {
+		if (!strcmp(*opts, "-s"))
+			g_scale = atoi(*(++opts));
+		else if (!strcmp(*opts, "-l"))
+			savestatel = *(++opts);
+		else if (!strcmp(*opts, "-d"))
+			savestated = *(++opts);
+		opts++;
+	}
+
 	core_load(argv[1]);
 	core_load_game(argv[2]);
 
+	if (savestatel) {
+		FILE *fd = fopen(savestatel, "rb");
+		if (!fd)
+			die("Failed to find savestate file '%s'", savestatel);
+
+		void *saveblob = malloc(g_retro.retro_serialize_size());
+		size_t rdb = fread(saveblob, 1, g_retro.retro_serialize_size(), fd);
+
+		if (!g_retro.retro_unserialize(saveblob, rdb))
+			die("Failed to load savestate, core returned error");
+		fclose(fd);
+		free(saveblob);
+	}
+
 	while (!glfwWindowShouldClose(g_win)) {
 		glfwPollEvents();
+
+		// Reset core on R key.
+		if (glfwGetKey(g_win, GLFW_KEY_R) == GLFW_PRESS) {
+			g_retro.retro_reset();
+		}
 
 		g_retro.retro_run();
 
@@ -531,6 +573,23 @@ int main(int argc, char *argv[]) {
 		video_render();
 
 		glfwSwapBuffers(g_win);
+	}
+
+	if (savestated) {
+		FILE *fd = fopen(savestated, "wb");
+		if (!fd) {
+			fprintf(stderr, "Could not write savestate dump to '%s'", savestated);
+		} else {
+			size_t savsz = g_retro.retro_serialize_size();
+			void *saveblob = malloc(savsz);
+			if (!g_retro.retro_serialize(saveblob, savsz)) {
+				fprintf(stderr, "Could not generate savestate, core returned error");
+			} else {
+				fwrite(saveblob, 1, savsz, fd);
+			}
+			free(saveblob);
+			fclose(fd);
+		}
 	}
 
 	core_unload();
