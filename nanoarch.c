@@ -15,6 +15,8 @@
 static GLFWwindow *g_win = NULL;
 static snd_pcm_t *g_pcm = NULL;
 static float g_scale = 3;
+static char *envvars = NULL;
+static unsigned nenvvars = 0;
 
 static GLfloat g_vertex[] = {
 	-1.0f, -1.0f, // left-bottom
@@ -354,6 +356,7 @@ static void core_log(enum retro_log_level level, const char *fmt, ...) {
 
 static bool core_environment(unsigned cmd, void *data) {
 	bool *bval;
+	struct retro_variable *rvars = (struct retro_variable*)data;
 
 	switch (cmd) {
 	case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
@@ -377,6 +380,25 @@ static bool core_environment(unsigned cmd, void *data) {
 	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
 		*(const char **)data = ".";
 		return true;
+
+	case RETRO_ENVIRONMENT_GET_VARIABLE:
+		if (!rvars->key) {
+			rvars->value = envvars;
+			return true;
+		}
+		else {
+			char *p = envvars;
+			unsigned vlen = strlen(rvars->key);
+			for (unsigned i = 0; i < nenvvars; i++) {
+				if (!strncmp(rvars->key, p, vlen) && p[vlen] == '=') {
+					rvars->value = &p[vlen+1];
+					return true;
+				}
+				p = strchr(p, 0) + 1;
+			}
+			return false;
+		}
+		return false;
 
 	default:
 		core_log(RETRO_LOG_DEBUG, "Unhandled env #%u", cmd);
@@ -523,14 +545,15 @@ static void core_unload() {
 
 int main(int argc, char *argv[]) {
 	if (argc < 3)
-		die("usage: %s <core> <game> [-s default-scale] [-l load-savestate] [-d save-savestate]", argv[0]);
+		die("usage: %s <core> <game> "
+		    "[-s default-scale] [-l load-savestate] [-d save-savestate] "
+		    "[-v variable1=value,variable2=value...]", argv[0]);
 
 	if (!glfwInit())
 		die("Failed to initialize glfw");
 
 	char **opts = &argv[3];
-	char *savestatel = NULL;
-	char *savestated = NULL;
+	char *savestatel = NULL, *savestated = NULL;
 	while (*opts) {
 		if (!strcmp(*opts, "-s"))
 			g_scale = atoi(*(++opts));
@@ -538,7 +561,19 @@ int main(int argc, char *argv[]) {
 			savestatel = *(++opts);
 		else if (!strcmp(*opts, "-d"))
 			savestated = *(++opts);
+		else if (!strcmp(*opts, "-v"))
+			envvars = *(++opts);
 		opts++;
+	}
+
+	if (envvars) {
+		char *p = strchr(envvars, ',');
+		nenvvars = 1;
+		while (p) {
+			*p = 0;
+			p = strchr(p, ',');
+			nenvvars++;
+		}
 	}
 
 	core_load(argv[1]);
