@@ -17,6 +17,7 @@ static snd_pcm_t *g_pcm = NULL;
 static float g_scale = 3;
 static char *envvars = NULL;
 static unsigned nenvvars = 0;
+static int fastforward = 0;
 
 static GLfloat g_vertex[] = {
 	-1.0f, -1.0f, // left-bottom
@@ -318,6 +319,9 @@ static void audio_deinit() {
 
 
 static size_t audio_write(const void *buf, unsigned frames) {
+	if (fastforward)
+		return frames;
+
 	if (!g_pcm)
 		return 0;
 
@@ -424,6 +428,8 @@ static void core_input_poll(void) {
 	if (glfwGetKey(g_win, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 		glfwSetWindowShouldClose(g_win, true);
 	}
+
+	fastforward = (glfwGetKey(g_win, GLFW_KEY_TAB) == GLFW_PRESS);
 }
 
 
@@ -601,7 +607,8 @@ int main(int argc, char *argv[]) {
 			g_retro.retro_reset();
 		}
 
-		g_retro.retro_run();
+		for (unsigned i = 0; i < (fastforward ? 10 : 1); i++)
+			g_retro.retro_run();
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
