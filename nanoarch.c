@@ -65,8 +65,8 @@ static struct {
 //	bool retro_load_game_special(unsigned game_type, const struct retro_game_info *info, size_t num_info);
 	void (*retro_unload_game)(void);
 //	unsigned retro_get_region(void);
-//	void *retro_get_memory_data(unsigned id);
-//	size_t retro_get_memory_size(unsigned id);
+	void* (*retro_get_memory_data)(unsigned id);
+	size_t (*retro_get_memory_size)(unsigned id);
 } g_retro;
 
 
@@ -481,6 +481,8 @@ static void core_load(const char *sofile) {
 	load_retro_sym(retro_serialize_size);
 	load_retro_sym(retro_serialize);
 	load_retro_sym(retro_unserialize);
+	load_retro_sym(retro_get_memory_data);
+	load_retro_sym(retro_get_memory_size);
 
 	load_sym(set_environment, retro_set_environment);
 	load_sym(set_video_refresh, retro_set_video_refresh);
@@ -552,17 +554,20 @@ static void core_unload() {
 int main(int argc, char *argv[]) {
 	if (argc < 3)
 		die("usage: %s <core> <game> "
-		    "[-s default-scale] [-l load-savestate] [-d save-savestate] "
+		    "[-s default-scale] [-g save-game-file] "
+		    "[-l load-savestate] [-d save-savestate] "
 		    "[-v variable1=value,variable2=value...]", argv[0]);
 
 	if (!glfwInit())
 		die("Failed to initialize glfw");
 
 	char **opts = &argv[3];
-	char *savestatel = NULL, *savestated = NULL;
+	char *savestatel = NULL, *savestated = NULL, *savegame = NULL;
 	while (*opts) {
 		if (!strcmp(*opts, "-s"))
 			g_scale = atoi(*(++opts));
+		else if (!strcmp(*opts, "-g"))
+			savegame = *(++opts);
 		else if (!strcmp(*opts, "-l"))
 			savestatel = *(++opts);
 		else if (!strcmp(*opts, "-d"))
@@ -584,6 +589,26 @@ int main(int argc, char *argv[]) {
 
 	core_load(argv[1]);
 	core_load_game(argv[2]);
+
+	// Load savegame dump, if requested
+	size_t sgsize = g_retro.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+	void *sgbufpt = g_retro.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+
+	if (savegame && sgbufpt && sgsize) {
+		FILE *fd = fopen(savegame, "rb");
+		if (fd) {
+			size_t ret = fread(sgbufpt, 1, sgsize, fd);
+			if (ret < 0)
+				printf("Could not load savegame contents, read() error\n");
+			else if (ret < sgsize)
+				printf("Savegame file seems too short, loading it anyway...\n");
+			else if (ret > sgsize)
+				printf("Savegame file seems too big, partially loading it anyway...\n");
+			fclose(fd);
+		}
+		else
+			printf("Could not load game file, continuing anyway...\n");
+	}
 
 	if (savestatel) {
 		FILE *fd = fopen(savestatel, "rb");
@@ -615,6 +640,18 @@ int main(int argc, char *argv[]) {
 		video_render();
 
 		glfwSwapBuffers(g_win);
+	}
+
+	if (savegame && sgbufpt && sgsize) {
+		FILE *fd = fopen(savegame, "wb");
+		if (!fd)
+			die("Failed to write save-game file '%s'", savegame);
+
+		size_t ret = fwrite(sgbufpt, 1, sgsize, fd);
+		if (ret != sgsize)
+			printf("Could not write savegame contents to disk!\n");
+
+		fclose(fd);
 	}
 
 	if (savestated) {
